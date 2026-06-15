@@ -24,6 +24,14 @@ export DKNOWNAI_API_KEY="your API key"
 
 Or enter `DKNOWNAI_API_KEY` in the host platform's skill configuration UI.
 
+For OpenClaw, configure the value under the skill environment path:
+
+```bash
+openclaw config set skills.entries.dknownai-guard.env.DKNOWNAI_API_KEY "your API key"
+```
+
+Do not store it as `skills.entries.dknownai-guard.apiKey`; the bundled script reads `DKNOWNAI_API_KEY` from the runtime environment.
+
 ## Usage
 
 ```bash

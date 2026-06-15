@@ -83,6 +83,7 @@ Handle API key setup in this order:
 When the user sends an API key to the agent:
 
 - Reply only that the API key was received and configuration is in progress. Do not repeat, partially display, log, or summarize the key.
+- Configure it immediately while the full value is still available to the agent. Some chat hosts redact secrets in later context as a shortened value such as `sk-abc...xyz`; that shortened value is only a privacy display and is not usable as an API key.
 - Do not write the key into `SKILL.md`, scripts, source files, logs, result messages, or committed files.
 - After successful configuration, continue the original task.
 - If configuration fails, explain the failure and follow the fallback path.
@@ -109,6 +110,14 @@ OpenClaw command example:
 openclaw config set skills.entries.dknownai-guard.env.DKNOWNAI_API_KEY "{user-provided API key}"
 ```
 
+Do not use this path:
+
+```bash
+openclaw config set skills.entries.dknownai-guard.apiKey "{user-provided API key}"
+```
+
+`apiKey` is not read by the bundled script. If a previous setup wrote `skills.entries.dknownai-guard.apiKey`, treat the skill as not configured and write the real value to `skills.entries.dknownai-guard.env.DKNOWNAI_API_KEY` instead.
+
 A merge patch is safer when writing a broader config object because it avoids replacing unrelated skill entries:
 
 ```json
@@ -126,6 +135,13 @@ A merge patch is safer when writing a broader config object because it avoids re
 ```
 
 If the agent can write OpenClaw configuration, use the OpenClaw configuration mechanism to write the path above. After writing, it is acceptable to verify that the field exists; if the platform displays the value as `__OPENCLAW_REDACTED__`, that is expected.
+
+OpenClaw verification checklist:
+
+1. Check `skills.entries.dknownai-guard.env.DKNOWNAI_API_KEY`, not `skills.entries.dknownai-guard.apiKey`.
+2. A redacted value means the platform is hiding the stored secret; it does not mean the agent can reconstruct the key from the redacted display.
+3. If the script still returns `Missing environment variable: DKNOWNAI_API_KEY`, the key was not injected into the script process. Reconfigure the skill environment value, or run the script with `DKNOWNAI_API_KEY` set only for that invocation.
+4. Report the key as configured only after the runtime can read `DKNOWNAI_API_KEY` or the platform confirms that this env value is attached to the skill execution environment.
 
 ## Fallback Setup
 
