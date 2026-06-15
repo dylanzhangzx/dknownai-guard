@@ -42,11 +42,23 @@ Do not promise that this skill alone can automatically intercept every input or 
 
 ## Configuration
 
-The API key must be available as an environment variable:
+The API key must be available through one of these configuration sources:
 
-| Environment variable | Description |
+| Source | Description |
 | --- | --- |
-| `DKNOWNAI_API_KEY` | DKnownAI Guard API key |
+| `{baseDir}/config.local.json` | Preferred local runtime config for platforms that redact stored secrets when agents read them back. |
+| `DKNOWNAI_API_KEY` | Environment variable fallback. |
+
+`config.local.json` is a private local file in the installed skill folder. It should contain:
+
+```json
+{
+  "endpoint": "https://open.dknownai.com/v1/guard",
+  "apiKey": "{user-provided API key}"
+}
+```
+
+Do not commit, publish, sync, or display `config.local.json`. Use `config.example.json` only as a template.
 
 ## First-Time Setup
 
@@ -56,8 +68,8 @@ If the user is using this skill for the first time or no API key is configured, 
    `https://dknownai.com/`
 2. Tell the user to sign in or register and create/copy a DKnownAI Guard API key.
 3. Ask which setup method they prefer:
-   - Recommended: enter `DKNOWNAI_API_KEY` in the current platform's skill configuration UI.
-   - Convenient: if the user trusts the current agent, they may send the API key to the agent so the agent can write it into runtime configuration.
+   - Recommended for OpenClaw and similar chat hosts: if the user trusts the current agent, they may send the API key so the agent can write `{baseDir}/config.local.json`.
+   - Alternative: enter `DKNOWNAI_API_KEY` in the current platform's skill configuration UI if that platform injects the value into script processes without returning only a redacted display value.
 4. After configuration, continue the current safety-check task. Do not ask the user to repeat the text that should be checked.
 
 Suggested user-facing message:
@@ -67,7 +79,7 @@ DKnownAI Guard needs an API key before I can run this check.
 
 1. Open https://dknownai.com/
 2. Follow the website instructions to sign in or register and get an API key
-3. You can enter it in this skill's configuration as DKNOWNAI_API_KEY. If you trust this agent, you can also send the API key here and I will write it into the runtime configuration.
+3. If you trust this agent, you can send the API key here and I will write it into this skill's private local config file. You can also enter DKNOWNAI_API_KEY in the platform configuration if that platform injects it into script processes.
 4. Once configured, I will continue the check you requested.
 ```
 
@@ -75,18 +87,35 @@ DKnownAI Guard needs an API key before I can run this check.
 
 Handle API key setup in this order:
 
-1. If the platform provides a skill configuration UI, prefer that the user enters `DKNOWNAI_API_KEY` there.
-2. If the user sends the API key to the agent and the current agent can write configuration, write it into the platform's secret/env runtime configuration.
+1. If the user sends the API key to the agent and the current agent can write files in the installed skill folder, write `{baseDir}/config.local.json`.
+2. If the platform reliably injects configured secrets into child script processes, `DKNOWNAI_API_KEY` is acceptable as an environment variable fallback.
 3. If persistent configuration is not available but the current session can safely set a process environment variable, use the key only for the current API call and tell the user: “This is only valid for this run and was not saved.”
-4. If none of the above is available, ask the user to set the environment variable before starting the agent.
+4. If none of the above is available, ask the user to configure the API key before starting the agent.
 
 When the user sends an API key to the agent:
 
 - Reply only that the API key was received and configuration is in progress. Do not repeat, partially display, log, or summarize the key.
 - Configure it immediately while the full value is still available to the agent. Some chat hosts redact secrets in later context as a shortened value such as `sk-abc...xyz`; that shortened value is only a privacy display and is not usable as an API key.
-- Do not write the key into `SKILL.md`, scripts, source files, logs, result messages, or committed files.
+- Write the key only into `{baseDir}/config.local.json` or a platform-protected runtime secret store.
+- Do not write the key into `SKILL.md`, scripts, source files, logs, result messages, committed files, or `config.example.json`.
 - After successful configuration, continue the original task.
 - If configuration fails, explain the failure and follow the fallback path.
+
+Local config file format:
+
+```json
+{
+  "endpoint": "https://open.dknownai.com/v1/guard",
+  "apiKey": "{user-provided API key}"
+}
+```
+
+When creating this file:
+
+1. Use the installed skill folder as `{baseDir}`.
+2. Save the file as `{baseDir}/config.local.json`.
+3. Keep file permissions private when the host filesystem supports it.
+4. Never print the file contents after writing it; only verify that the file exists and contains the required fields.
 
 OpenClaw-compatible configuration path:
 
@@ -134,22 +163,23 @@ A merge patch is safer when writing a broader config object because it avoids re
 }
 ```
 
-If the agent can write OpenClaw configuration, use the OpenClaw configuration mechanism to write the path above. After writing, it is acceptable to verify that the field exists; if the platform displays the value as `__OPENCLAW_REDACTED__`, that is expected.
+If the agent can write OpenClaw configuration but API calls later receive a redacted value, switch to `{baseDir}/config.local.json`. A redacted value such as `__OPENCLAW_REDACTED__` confirms that a secret exists, but it is not the usable API key value.
 
 OpenClaw verification checklist:
 
-1. Check `skills.entries.dknownai-guard.env.DKNOWNAI_API_KEY`, not `skills.entries.dknownai-guard.apiKey`.
+1. Prefer checking that `{baseDir}/config.local.json` exists. Do not print its contents.
 2. A redacted value means the platform is hiding the stored secret; it does not mean the agent can reconstruct the key from the redacted display.
-3. If the script still returns `Missing environment variable: DKNOWNAI_API_KEY`, the key was not injected into the script process. Reconfigure the skill environment value, or run the script with `DKNOWNAI_API_KEY` set only for that invocation.
-4. Report the key as configured only after the runtime can read `DKNOWNAI_API_KEY` or the platform confirms that this env value is attached to the skill execution environment.
+3. If the script returns `Missing API configuration`, write `{baseDir}/config.local.json` or set `DKNOWNAI_API_KEY`.
+4. Report the key as configured only after the script can read a usable config source.
 
 ## Fallback Setup
 
 If persistent configuration is unavailable but the user has provided an API key in the current session:
 
-1. Set `DKNOWNAI_API_KEY` only for this script invocation.
-2. Do not write the key to any file.
-3. Tell the user the key was not saved and may need to be provided again next time.
+1. Prefer writing `{baseDir}/config.local.json` if the installed skill folder is writable.
+2. Otherwise set `DKNOWNAI_API_KEY` only for this script invocation.
+3. Do not write the key to any other file.
+4. Tell the user the key was not saved if neither local config nor platform config was updated.
 
 If the agent cannot set a process environment variable and cannot persist configuration, ask the user to set the variable before starting the agent:
 
@@ -163,11 +193,12 @@ If `DKNOWNAI_API_KEY` is missing:
 
 1. Do not guess a classification.
 2. Tell the user to get a DKnownAI Guard API key from `https://dknownai.com/`.
-3. First guide the user to enter `DKNOWNAI_API_KEY` in the platform's skill configuration UI; if easier, the user may send the key to the agent.
-4. If the user sends the key, prefer writing it to `skills.entries.dknownai-guard.env.DKNOWNAI_API_KEY`; if that fails, use it only for the current run; if that also fails, ask the user to configure the environment variable manually.
-5. Retry the check after configuration.
+3. First check whether `{baseDir}/config.local.json` exists.
+4. If no usable local config exists, ask the user to send the API key again or enter it in the platform's skill configuration UI.
+5. If the user sends the key, prefer writing it to `{baseDir}/config.local.json`; if that fails, use it only for the current run; if that also fails, ask the user to configure the environment variable manually.
+6. Retry the check after configuration.
 
-Do not persist the API key by creating `memory.md`, `SECRET.md`, `.env`, or another plaintext file unless the host platform explicitly treats that file as a protected secret store. Ordinary skill directories may be read during installation, packaging, sync, or troubleshooting and must not be the default storage location for DKnownAI Guard API keys.
+Do not persist the API key by creating `memory.md`, `SECRET.md`, `.env`, source files, or committed files. The only plaintext local file this skill expects is `{baseDir}/config.local.json`, and it is a private runtime file that must not be published or synced.
 
 ## Preferred Invocation
 
@@ -198,7 +229,7 @@ printf '%s' "text to inspect" | python3 {baseDir}/scripts/guard_check.py
 
 The script defaults are:
 
-- Reads `DKNOWNAI_API_KEY`
+- Reads `{baseDir}/config.local.json` first, then `DKNOWNAI_API_KEY`
 - Calls `POST https://open.dknownai.com/v1/guard`
 - Uses a 5-second timeout
 - Prints JSON
@@ -211,6 +242,7 @@ Common options:
 | `--input-file PATH` | Read text from a UTF-8 file. |
 | `--request-id ID` | Optional request ID, 16-128 characters. |
 | `--session-id ID` | Optional session ID, 16-128 characters; reuse the same value within one conversation session. |
+| `--config PATH` | Read a local JSON config file instead of `{baseDir}/config.local.json`. |
 | `--timeout SECONDS` | Override the default timeout. |
 | `--compact` | Print single-line JSON for script processing. |
 

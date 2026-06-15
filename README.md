@@ -18,13 +18,24 @@ https://dknownai.com/
 
 Configure it as:
 
+```json
+{
+  "endpoint": "https://open.dknownai.com/v1/guard",
+  "apiKey": "your API key"
+}
+```
+
+Save that as `config.local.json` in this skill folder. Do not commit or publish this file.
+
+Environment variable fallback:
+
 ```bash
 export DKNOWNAI_API_KEY="your API key"
 ```
 
 Or enter `DKNOWNAI_API_KEY` in the host platform's skill configuration UI.
 
-For OpenClaw, configure the value under the skill environment path:
+For OpenClaw, `config.local.json` is recommended when the platform returns redacted secret values to agents. The environment path is still supported when the runtime injects the full value into script processes:
 
 ```bash
 openclaw config set skills.entries.dknownai-guard.env.DKNOWNAI_API_KEY "your API key"

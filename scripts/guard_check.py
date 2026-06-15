@@ -13,10 +13,12 @@ import sys
 import urllib.error
 import urllib.request
 from os import environ as runtime_env
+from pathlib import Path
 
 
 DEFAULT_ENDPOINT = "https://open.dknownai.com/v1/guard"
 DEFAULT_ENV_NAME = "DKNOWNAI_API_KEY"
+DEFAULT_CONFIG_NAME = "config.local.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,8 +46,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--endpoint",
-        default=DEFAULT_ENDPOINT,
-        help=f"API endpoint. Defaults to {DEFAULT_ENDPOINT}.",
+        help=f"API endpoint. Defaults to config value or {DEFAULT_ENDPOINT}.",
+    )
+    parser.add_argument(
+        "--config",
+        help=f"Local JSON config path. Defaults to the skill folder's {DEFAULT_CONFIG_NAME}.",
     )
     parser.add_argument(
         "--timeout",
@@ -86,10 +91,33 @@ def print_json(payload: object, compact: bool) -> None:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def default_config_path() -> Path:
+    return Path(__file__).resolve().parent.parent / DEFAULT_CONFIG_NAME
+
+
+def read_config(path_text: str | None) -> dict[str, object]:
+    config_path = Path(path_text).expanduser() if path_text else default_config_path()
+    if not config_path.exists():
+        return {}
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        payload = json.load(config_file)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Config file must contain a JSON object: {config_path}")
+    return payload
+
+
+def config_text(config: dict[str, object], key: str) -> str | None:
+    value = config.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
 def main() -> int:
     args = parse_args()
 
     try:
+        config = read_config(args.config)
         text = read_input(args).strip()
         if not text:
             raise ValueError("Input text is empty.")
@@ -99,16 +127,18 @@ def main() -> int:
         print_json({"ok": False, "error": str(exc)}, args.compact)
         return 1
 
-    auth_value = runtime_env.get(args.env_name)
+    auth_value = config_text(config, "apiKey") or runtime_env.get(args.env_name)
     if not auth_value:
         print_json(
             {
                 "ok": False,
-                "error": f"Missing environment variable: {args.env_name}",
+                "error": f"Missing API configuration. Add apiKey to {default_config_path()} or set {args.env_name}.",
             },
             args.compact,
         )
         return 1
+
+    endpoint = args.endpoint or config_text(config, "endpoint") or DEFAULT_ENDPOINT
 
     body = {"input": text}
     if args.request_id:
@@ -117,7 +147,7 @@ def main() -> int:
         body["session_id"] = args.session_id
 
     request = urllib.request.Request(
-        args.endpoint,
+        endpoint,
         data=json.dumps(body).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {auth_value}",
